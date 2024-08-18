@@ -142,7 +142,7 @@ pub struct MacroState<'a> {
 impl<'a> MacroState<'a> {
 	pub fn from(macro_: &'a Macro, source: &KeyState) -> Self {
 		MacroState {
-			macro_: macro_,
+			macro_,
 			current_sequence: CurrentSequence::Start(SequenceState::from(
 				&macro_.start_sequence,
 				0,
@@ -167,6 +167,12 @@ impl<'a> MacroState<'a> {
 
 				if seq.is_finished() {
 					self.move_to_next_seq(elapsed_ms);
+
+					if let CurrentSequence::Loop(seq) = &self.current_sequence {
+						if seq.is_finished() {
+							break;
+						}
+					}
 				}
 			}
 		}
@@ -506,6 +512,47 @@ mod tests {
 		));
 
 		macro_state.tick(200, &mut vec![]);
+		assert!(matches!(
+			macro_state.current_sequence,
+			CurrentSequence::Loop(_)
+		));
+	}
+
+	#[test]
+	fn macro_with_empty_loop_still_loops() {
+		let device_key = new_test_device_key(
+			KeyId::new(1),
+			vec![Macro {
+				start_sequence: Sequence {
+					actions: vec![Action {
+						predelay_ms: 100,
+						action_event: ActionEvent::None,
+					}],
+				},
+				loop_sequence: Sequence { actions: vec![] },
+				end_sequence: Sequence {
+					actions: vec![Action {
+						predelay_ms: 300,
+						action_event: ActionEvent::None,
+					}],
+				},
+				cut_channels: vec![Channel::new(1)],
+				id: MacroId::new(1),
+				name: "Name".to_string(),
+				play_channel: Some(Channel::new(1)),
+			}],
+		);
+
+		let key_state = KeyState::from(&device_key);
+		let mut macro_state = MacroState::from(&device_key.default_layer.macros[0], &key_state);
+
+		macro_state.tick(100, &mut vec![]);
+		assert!(matches!(
+			macro_state.current_sequence,
+			CurrentSequence::Loop(_)
+		));
+
+		macro_state.tick(300, &mut vec![]);
 		assert!(matches!(
 			macro_state.current_sequence,
 			CurrentSequence::Loop(_)
